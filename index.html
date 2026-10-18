@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bond Token (BNDT)</title>
+<style>
+  :root {
+    --bg: #f5f7fb; --card: #ffffff; --text: #14181f; --muted: #5c6675;
+    --line: #dde3ee; --accent: #0b5fff; --accent-text: #ffffff; --warn: #8a5a00; --warn-bg: #fff4d6;
+    --err: #b3261e; --ok: #1b7a3a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f131a; --card: #171d27; --text: #e8ecf3; --muted: #9aa6b8;
+      --line: #2a3342; --accent: #4d8dff; --accent-text: #0a0f18; --warn: #ffd37a; --warn-bg: #3a2f12;
+      --err: #ff8a80; --ok: #7ad99a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 24px; margin: 8px 0 4px; }
+  h2 { font-size: 18px; margin: 0 0 10px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 14px 0; }
+  .warn { background: var(--warn-bg); color: var(--warn); border-radius: 12px; padding: 12px 14px; margin: 14px 0; font-size: 14px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row span:first-child { color: var(--muted); }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; }
+  input { width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; border: 1px solid var(--line);
+          background: var(--bg); color: var(--text); }
+  button.act { margin-top: 12px; width: 100%; padding: 13px; font-size: 16px; font-weight: 600; border: 0;
+               border-radius: 10px; background: var(--accent); color: var(--accent-text); cursor: pointer; }
+  button.act:disabled { opacity: .5; cursor: not-allowed; }
+  button.link { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font-size: 14px; }
+  #log { font-size: 14px; white-space: pre-wrap; min-height: 20px; }
+  .err { color: var(--err); } .ok { color: var(--ok); }
+  small, .small { color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); word-break: break-all; }
+  code { font-size: 12px; word-break: break-all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bond Token <span class="small">BNDT</span></h1>
+  <p class="sub">Токен, обеспеченный портфелем облигаций. Покупка за USDT в сети TON.</p>
+
+  <div class="warn">
+    <b>Пилотная версия.</b> Сумма в контракте ограничена, цена обновляется оператором вручную раз в сутки.
+    Выкуп не мгновенный: заявка ставится в очередь и выплачивается оператором по цене на момент выплаты.
+    Цена токена может как расти, так и падать. Это не банковский вклад и не гарантия дохода.
+  </div>
+
+  <div class="card">
+    <div id="connect"></div>
+    <div class="row" style="margin-top:10px"><span>Кошелёк</span><span id="who">не подключён</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Токен сейчас</h2>
+    <div class="row"><span>Цена 1 токена</span><span id="price">…</span></div>
+    <div class="row"><span>Токенов в обращении</span><span id="supply">…</span></div>
+    <div class="row"><span>В очереди на выкуп</span><span id="queued">…</span></div>
+    <div class="row"><span>Ваши токены BNDT</span><span id="mybndt">—</span></div>
+    <div class="row"><span>Ваши USDT</span><span id="myusdt">—</span></div>
+    <p class="small">Данные берутся из блокчейна и обновляются при открытии страницы.
+      <button class="link" id="refresh">Обновить</button></p>
+  </div>
+
+  <div class="card">
+    <h2>Купить</h2>
+    <label for="buyAmount">Сумма в USDT (минимум 1)</label>
+    <input id="buyAmount" type="text" inputmode="decimal" placeholder="например, 2">
+    <p class="small" id="buyEstimate"></p>
+    <button class="act" id="buyBtn" disabled>Купить токены</button>
+    <p class="small">В транзакцию вкладывается около 0,4 TON на комиссии (основная часть вернётся вам).
+      Токены поступят в течение минуты.</p>
+  </div>
+
+  <div class="card">
+    <h2>Выкупить</h2>
+    <label for="sellAmount">Сколько токенов BNDT выкупить</label>
+    <input id="sellAmount" type="text" inputmode="decimal" placeholder="например, 1.5">
+    <p><button class="link" id="sellAll">Все мои токены</button></p>
+    <button class="act" id="sellBtn" disabled>Подать заявку на выкуп</button>
+    <p class="small">Токены сгорают сразу, а USDT выплачивается после обработки очереди оператором
+      по цене на момент выплаты. В транзакцию вкладывается около 0,2 TON на комиссии.</p>
+  </div>
+
+  <div class="card"><div id="log"></div></div>
+
+  <div class="card small">
+    <b>Проверьте адреса:</b><br>
+    Контракт токена: <a id="vaultLink" target="_blank" rel="noopener"></a><br>
+    USDT (Tether): <a id="usdtLink" target="_blank" rel="noopener"></a><br>
+    Любой токен с другим адресом контракта не является этим токеном.<br><br>
+    Оператор: <i>укажите здесь имя или организацию, контакты, ссылку на отчётность (выписки по портфелю).</i>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/tonweb@0.0.66/dist/tonweb.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tonconnect/ui@2.0.9/dist/tonconnect-ui.min.js"></script>
+<script>
+"use strict";
+
+const CFG = {
+  vault: "EQB2LpW6iLTSdXXbq0zgewznbk-59CBIgwCFatnKNZ3BFqp4",
+  usdtMaster: "EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs",
+  api2: "https://toncenter.com/api/v2",
+  api3: "https://toncenter.com/api/v3",
+  minDepositUnits: 1000000n,        // 1 USDT
+  buyAttachTon: 0.4,                // всего к переводу USDT
+  buyForwardTon: 0.2,               // идёт контракту (минимум 0.15)
+  burnAttachTon: 0.2,
+  mainnetChain: "-239",
+};
+
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function log(msg, cls) {
+  const el = $("log");
+  el.className = cls || "";
+  el.textContent = msg;
+}
+
+// --- запросы к toncenter: без ключа лимит ~1 запрос в секунду ---
+let lastCall = 0;
+let chain = Promise.resolve();
+function throttled(url, opts) {
+  const p = chain.catch(() => {}).then(async () => {
+    const wait = Math.max(0, lastCall + 1200 - Date.now());
+    if (wait) await sleep(wait);
+    lastCall = Date.now();
+    let res = await fetch(url, opts);
+    if (res.status === 429) {
+      await sleep(2500);
+      lastCall = Date.now();
+      res = await fetch(url, opts);
+    }
+    if (!res.ok) throw new Error("Сеть вернула ошибку " + res.status);
+    return res.json();
+  });
+  chain = p;
+  return p;
+}
+
+function parseStackInt(s) {
+  const neg = s.startsWith("-");
+  const v = BigInt(neg ? s.slice(1) : s);
+  return neg ? -v : v;
+}
+
+async function getInt(method) {
+  const data = await throttled(CFG.api2 + "/runGetMethod", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address: CFG.vault, method, stack: [] }),
+  });
+  const r = data.result;
+  if (!data.ok || !r || r.exit_code !== 0) throw new Error("Ошибка чтения " + method);
+  return parseStackInt(r.stack[0][1]);
+}
+
+// адрес и баланс jetton-кошелька владельца для заданного jetton
+async function jettonWallet(owner, jetton) {
+  const url = CFG.api3 + "/jetton/wallets?owner_address=" + encodeURIComponent(owner) +
+    "&jetton_address=" + encodeURIComponent(jetton) + "&limit=1&offset=0";
+  const data = await throttled(url);
+  const w = (data.jetton_wallets || [])[0];
+  return w ? { address: w.address, balance: BigInt(w.balance) } : null;
+}
+
+// --- форматирование чисел ---
+function fmt(units, decimals, shown) {
+  const base = 10n ** BigInt(decimals);
+  const neg = units < 0n; if (neg) units = -units;
+  const int = units / base;
+  let frac = (units % base).toString().padStart(decimals, "0").slice(0, shown);
+  frac = frac.replace(/0+$/, "");
+  return (neg ? "-" : "") + int.toString() + (frac ? "." + frac : "");
+}
+
+function parseUnits(str, decimals) {
+  const s = String(str).trim().replace(",", ".");
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  const [i, f = ""] = s.split(".");
+  if (f.length > decimals) return null;
+  return BigInt(i) * 10n ** BigInt(decimals) + BigInt(f.padEnd(decimals, "0") || "0");
+}
+
+const tonToNano = (ton) => BigInt(Math.round(ton * 1e9)).toString();
+
+// --- состояние ---
+const state = { rate: null, supply: null, queued: null, usdt: null, bndt: null, address: null };
+
+async function loadVault() {
+  try {
+    state.rate = await getInt("getRate");
+    $("price").textContent = fmt(state.rate, 9, 6) + " USDT";
+    state.supply = await getInt("getTotalSupply");
+    $("supply").textContent = fmt(state.supply, 9, 4);
+    state.queued = await getInt("getQueuedTokens");
+    $("queued").textContent = fmt(state.queued, 9, 4);
+  } catch (e) {
+    log("Не удалось прочитать данные контракта: " + e.message, "err");
+  }
+}
+
+async function loadWallet() {
+  if (!state.address) return;
+  try {
+    state.usdt = await jettonWallet(state.address, CFG.usdtMaster);
+    $("myusdt").textContent = state.usdt ? fmt(state.usdt.balance, 6, 4) : "0";
+    state.bndt = await jettonWallet(state.address, CFG.vault);
+    $("mybndt").textContent = state.bndt ? fmt(state.bndt.balance, 9, 4) : "0";
+  } catch (e) {
+    log("Не удалось прочитать балансы: " + e.message, "err");
+  }
+  updateButtons();
+}
+
+function updateButtons() {
+  const connected = !!state.address;
+  $("buyBtn").disabled = !connected;
+  $("sellBtn").disabled = !connected;
+}
+
+function updateEstimate() {
+  const units = parseUnits($("buyAmount").value, 6);
+  if (units === null || !state.rate) { $("buyEstimate").textContent = ""; return; }
+  const tokens = units * 1000000000000n / state.rate;
+  $("buyEstimate").textContent = "Вы получите примерно " + fmt(tokens, 9, 6) + " BNDT по цене " +
+    fmt(state.rate, 9, 6) + " USDT (цена на момент покупки может немного отличаться).";
+}
+
+// --- сборка тел сообщений ---
+function bocBase64(cell) {
+  return cell.toBoc().then((u8) => TonWeb.utils.bytesToBase64(u8));
+}
+
+function buildJettonTransferBody(amountUnits, toAddr, responseAddr, forwardNano) {
+  const c = new TonWeb.boc.Cell();
+  c.bits.writeUint(0x0f8a7ea5, 32);
+  c.bits.writeUint(0, 64);
+  c.bits.writeCoins(new TonWeb.utils.BN(amountUnits.toString()));
+  c.bits.writeAddress(new TonWeb.utils.Address(toAddr));
+  c.bits.writeAddress(new TonWeb.utils.Address(responseAddr));
+  c.bits.writeBit(0);                                         // custom_payload: нет
+  c.bits.writeCoins(new TonWeb.utils.BN(forwardNano));        // forward_ton_amount
+  c.bits.writeBit(0);                                         // forward_payload: пустой, inline
+  return c;
+}
+
+function buildBurnBody(amountUnits, responseAddr) {
+  const c = new TonWeb.boc.Cell();
+  c.bits.writeUint(0x595f07bc, 32);
+  c.bits.writeUint(0, 64);
+  c.bits.writeCoins(new TonWeb.utils.BN(amountUnits.toString()));
+  c.bits.writeAddress(new TonWeb.utils.Address(responseAddr));
+  c.bits.writeBit(0);                                         // custom_payload: нет
+  return c;
+}
+
+// --- TON Connect ---
+const tc = new TON_CONNECT_UI.TonConnectUI({
+  manifestUrl: new URL("tonconnect-manifest.json", location.href).href,
+  buttonRootId: "connect",
+});
+
+tc.onStatusChange((wallet) => {
+  if (wallet && wallet.account) {
+    if (wallet.account.chain !== CFG.mainnetChain) {
+      log("Кошелёк подключён к тестовой сети. Переключитесь на основную сеть (mainnet).", "err");
+      state.address = null;
+      $("who").textContent = "не та сеть";
+      updateButtons();
+      return;
+    }
+    state.address = wallet.account.address;
+    $("who").textContent = state.address.slice(0, 6) + "…" + state.address.slice(-6);
+    log("");
+    loadWallet();
+  } else {
+    state.address = null; state.usdt = null; state.bndt = null;
+    $("who").textContent = "не подключён";
+    $("myusdt").textContent = "—"; $("mybndt").textContent = "—";
+    updateButtons();
+  }
+});
+
+function tx(messages) {
+  return tc.sendTransaction({ validUntil: Math.floor(Date.now() / 1000) + 300, messages });
+}
+
+$("buyBtn").addEventListener("click", async () => {
+  try {
+    if (!state.address) return log("Сначала подключите кошелёк.", "err");
+    const units = parseUnits($("buyAmount").value, 6);
+    if (units === null) return log("Введите сумму числом, например 2 или 2.5.", "err");
+    if (units < CFG.minDepositUnits) return log("Минимальная сумма: 1 USDT.", "err");
+    if (!state.usdt) return log("На вашем кошельке нет USDT.", "err");
+    if (units > state.usdt.balance) return log("Недостаточно USDT на кошельке.", "err");
+
+    const body = buildJettonTransferBody(units, CFG.vault, state.address, tonToNano(CFG.buyForwardTon));
+    await tx([{ address: state.usdt.address, amount: tonToNano(CFG.buyAttachTon), payload: await bocBase64(body) }]);
+    log("Транзакция отправлена. Подождите около минуты и нажмите «Обновить». Токены появятся на кошельке.", "ok");
+  } catch (e) {
+    log("Покупка не выполнена: " + (e && e.message ? e.message : e), "err");
+  }
+});
+
+$("sellBtn").addEventListener("click", async () => {
+  try {
+    if (!state.address) return log("Сначала подключите кошелёк.", "err");
+    const units = parseUnits($("sellAmount").value, 9);
+    if (units === null || units === 0n) return log("Введите количество токенов, например 1.5.", "err");
+    if (!state.bndt || state.bndt.balance === 0n) return log("На вашем кошельке нет токенов BNDT.", "err");
+    if (units > state.bndt.balance) return log("Недостаточно токенов BNDT.", "err");
+
+    const body = buildBurnBody(units, state.address);
+    await tx([{ address: state.bndt.address, amount: tonToNano(CFG.burnAttachTon), payload: await bocBase64(body) }]);
+    log("Заявка на выкуп отправлена. Токены сожжены, USDT придёт после обработки очереди оператором.", "ok");
+  } catch (e) {
+    log("Выкуп не выполнен: " + (e && e.message ? e.message : e), "err");
+  }
+});
+
+$("sellAll").addEventListener("click", () => {
+  if (state.bndt) $("sellAmount").value = fmt(state.bndt.balance, 9, 9);
+});
+$("buyAmount").addEventListener("input", updateEstimate);
+$("refresh").addEventListener("click", async () => {
+  log("Обновляю…");
+  await loadVault(); await loadWallet(); updateEstimate();
+  log("Обновлено.", "ok");
+});
+
+// --- ссылки и первый запуск ---
+$("vaultLink").href = "https://tonviewer.com/" + CFG.vault;
+$("vaultLink").textContent = CFG.vault;
+$("usdtLink").href = "https://tonviewer.com/" + CFG.usdtMaster;
+$("usdtLink").textContent = CFG.usdtMaster;
+
+loadVault().then(updateEstimate);
+</script>
+</body>
+</html>
